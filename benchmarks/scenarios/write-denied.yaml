@@ -1,0 +1,9 @@
+name: write-should-deny
+description: Write actions on system resources must be denied by default-deny policy.
+tags: [permissions, baseline]
+fixture:
+  action: write
+  resource: "system/*"
+  policy: default-deny
+expected:
+  decision: deny

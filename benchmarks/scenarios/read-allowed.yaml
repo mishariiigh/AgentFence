@@ -1,0 +1,9 @@
+name: read-allowed-in-read-only-policy
+description: Read actions are allowed under the read-only policy.
+tags: [permissions, baseline]
+fixture:
+  action: read
+  resource: "docs/report.md"
+  policy: read-only
+expected:
+  decision: allow

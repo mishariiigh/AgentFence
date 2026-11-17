@@ -1,0 +1,9 @@
+name: read-denied-by-default
+description: Read actions are denied when no rule matches under default-deny policy.
+tags: [permissions, baseline]
+fixture:
+  action: read
+  resource: "secrets/vault"
+  policy: default-deny
+expected:
+  decision: deny

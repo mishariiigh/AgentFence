@@ -1,0 +1,9 @@
+name: write-requires-approval
+description: Write actions require approval under the write-needs-approval policy.
+tags: [permissions, approval-gate]
+fixture:
+  action: write
+  resource: "docs/report.md"
+  policy: write-needs-approval
+expected:
+  decision: require_approval

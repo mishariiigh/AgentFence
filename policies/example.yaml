@@ -1,0 +1,22 @@
+# Example AgentFence policy file.
+#
+# Decisions are deterministic: allow, deny, require_approval.
+# First matching rule wins; otherwise `default` applies.
+name: example-policy
+default: deny
+rules:
+  - id: allow-read-docs
+    action: read
+    resource: "docs/*"
+    decision: allow
+    description: Allow reading project documentation.
+  - id: approval-writes
+    action: write
+    resource: "docs/*"
+    decision: require_approval
+    description: Writing documentation requires human approval.
+  - id: deny-secrets
+    action: read
+    resource: "secrets/*"
+    decision: deny
+    description: Never allow access to secrets.
