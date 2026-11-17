@@ -43,7 +43,9 @@ def scan_path(target: Path) -> ScanResult:
 
 def _is_ignored(path: Path) -> bool:
     parts = {p.lower() for p in path.parts}
-    return bool(parts & {".git", "node_modules", ".venv", "venv", "__pycache__", "dist"})
+    return bool(
+        parts & {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", ".next"}
+    )
 
 
 def _inspect_file(path: Path) -> list[Finding]:

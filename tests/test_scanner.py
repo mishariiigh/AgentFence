@@ -45,6 +45,8 @@ def test_scan_missing_target_raises(tmp_path: Path) -> None:
 def test_scan_is_recursive_and_ignores_node_modules(tmp_path: Path) -> None:
     (tmp_path / "node_modules").mkdir()
     (tmp_path / "node_modules" / "settings.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".next").mkdir()
+    (tmp_path / ".next" / "settings.json").write_text("{}", encoding="utf-8")
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "settings.json").write_text("{}", encoding="utf-8")
     result = scan_path(tmp_path)
