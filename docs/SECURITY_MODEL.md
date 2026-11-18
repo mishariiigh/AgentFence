@@ -27,7 +27,8 @@ and the trust assumptions involved. It is normative for contributors.
   no outbound network calls in the scanning path.
 - Policy decisions involve **no LLM**. The evaluator is pure, synchronous, and
   deterministic; the same input always yields the same decision.
-- Reports, logs, and CLI output pass through the redaction layer.
+- Reports, logs, API responses, and persisted database rows pass through the
+  redaction layer before storage or display.
 
 ## What AgentFence does NOT do (do not assume otherwise)
 
@@ -43,6 +44,9 @@ and the trust assumptions involved. It is normative for contributors.
   as "investigate manually," never as ground truth.
 - **No tamper-proof audit log.** The hash chain detects accidental mutation
   but an attacker with filesystem write access can rewrite the whole log.
+- **The scan path validator is not a sandbox.** It rejects remote URLs and
+  requires existing local paths, but the local user is already trusted by
+  assumption; the API is not hardened against a malicious local process.
 
 ## Trust assumptions
 
@@ -52,6 +56,11 @@ and the trust assumptions involved. It is normative for contributors.
   (512 KiB), and parse failures become findings rather than crashes.
 - The Attack Lab's built-in policies are examples, not security defaults you
   should rely on for production decisions.
+- **The local API is not a hardened network service.** It binds to 127.0.0.1
+  and its CORS allow-list covers only local dashboard origins, but anyone or
+  anything already running on your machine can call it. Do not expose the API
+  port beyond localhost (e.g. do not run it with `--host 0.0.0.0` on a shared
+  network).
 
 ## Reporting a vulnerability
 

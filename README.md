@@ -22,8 +22,10 @@ AI agents hold powerful capabilities: file access, shell execution, network call
 | Safe scenario-based Attack Lab | ✅ Working | `agentfence arena` |
 | Risk scoring & report generation | ✅ Working | `agentfence scan --report report.json` |
 | Local audit log (hash-chained) | ✅ Working | written to `.agentfence/audit.jsonl` |
-| Local API (health, scan, MCP inspect) | ✅ Working | `agentfence dashboard` |
-| Dashboard UI (demo data) | 🟡 Foundation | `npm run dev` in `apps/dashboard` |
+| SQLite scan history | ✅ Working | `.agentfence/agentfence.db`, API: `GET /api/v1/scans` |
+| Local API (health, scan, history, MCP inspect) | ✅ Working | `agentfence dashboard` |
+| Dashboard UI (live data for Overview/Scans/Findings/MCP) | ✅ Working | `npm run dev` in `apps/dashboard` |
+| Attack Lab & Policies UI | 🟡 Demo/planned views | see docs/ROADMAP.md |
 | Runtime protection / agent enforcement | ❌ Not implemented | see docs/SECURITY_MODEL.md |
 
 ## Security guarantees (enforced in code)
@@ -79,14 +81,39 @@ agentfence arena benchmarks/scenarios
 agentfence dashboard
 ```
 
-### Dashboard
+### Dashboard (live API integration)
 
 ```bash
+# Terminal 1: start the local API (binds to 127.0.0.1 by default)
+agentfence dashboard
+
+# Terminal 2: start the dashboard
 cd apps/dashboard
+npm install
 npm run dev        # http://localhost:3000
 ```
 
-The dashboard ships with **clearly labeled demonstration data**. It connects to the local API (`agentfence dashboard`) in a subsequent milestone; no fabricated metrics are presented as real results.
+The dashboard talks to the API at `NEXT_PUBLIC_AGENTFENCE_API`
+(default: `http://127.0.0.1:8000`). Override it, e.g. for a custom port:
+
+```bash
+echo 'NEXT_PUBLIC_AGENTFENCE_API=http://127.0.0.1:8001' > apps/dashboard/.env.local
+```
+
+From the dashboard you can:
+
+- See live totals (scans, findings, critical/high counts) on **Overview**.
+- Run a new scan by path on **Scans** (history refreshes automatically).
+- Open any scan to see its actual stored findings on **Scan Details**.
+- Filter all findings by severity on **Findings**.
+- Run live MCP config inspections on **MCP Inspection**.
+
+Scan history persists across API restarts in SQLite at
+`.agentfence/agentfence.db` (override with `AGENTFENCE_DB`). CORS is limited
+to localhost dashboard origins.
+
+Attack Lab, Policies, Reports, and Settings pages remain clearly-labelled
+demonstration/planned views.
 
 ## Architecture
 

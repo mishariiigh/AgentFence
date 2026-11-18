@@ -12,24 +12,11 @@
 ```
 agentfence/
 ├── packages/
-│   ├── agentfence_core/             # Shared models (Finding, ScanResult, Decision)
-│   │                                # + secret redaction helpers
-│   ├── agentfence_scanner/          # Read-only config scanner
-│   │   ├── signatures.py            #   which files are agent configs
-│   │   ├── rules.py                 #   pure inspection rules over parsed data
-│   │   └── engine.py                #   file discovery, parsing, findings assembly
-│   ├── agentfence_policy_engine/    # Deterministic policy evaluation
-│   │   ├── policy.py                #   schema + validation (Pydantic)
-│   │   └── evaluator.py             #   first-match-wins evaluation, no LLM
-│   ├── agentfence_attack_lab/       # Safe scenario testing
-│   │   ├── scenarios.py             #   declarative YAML scenario schema
-│   │   └── runner.py                #   deterministic fixture evaluation
-│   ├── agentfence_mcp_inspector/    # Read-only MCP config inspection
-│   ├── agentfence_risk_engine/      # Deterministic risk scoring
-│   ├── agentfence_report_generator/ # JSON/Markdown reports (redacted)
-│   ├── agentfence_flight_recorder/  # Hash-chained local audit log (JSONL)
+│   ├── agentfence_storage/          # SQLite persistence (schema migrations, scan store)
+│   ├── agentfence_api/              # FastAPI app (scan + history + MCP endpoints, CORS)
 │   ├── agentfence_cli/              # Typer CLI (`agentfence`)
-│   └── agentfence_api/              # FastAPI application factory
+│   └── ... (core, scanner, policy_engine, attack_lab, mcp_inspector,
+│            risk_engine, report_generator, flight_recorder)
 ├── adapters/                        # Per-platform read-only config discovery
 │   ├── claude_code/ codex/ cursor/ mcp/ custom/
 ├── apps/
@@ -43,8 +30,8 @@ agentfence/
 ## Data flow (scan)
 
 ```
-target path
-   │  (read-only file discovery; node_modules/.git/venv skipped)
+target path ──► validated by API (local path, no URLs, must exist)
+   │  (read-only file discovery; node_modules/.git/.next skipped)
    ▼
 signatures.classify() ──► supported config kinds
    │
@@ -57,7 +44,13 @@ engine._inspect_file()
 ScanResult (list[Finding], counts, notes)
    ├── CLI rendering (Rich)  ── or ── JSON (--json)
    ├── risk_engine.score_findings() ─► score/label
-   └── report_generator.save_report()
+   ├── report_generator.save_report()
+   └── ★ ScanStore.save_scan() ─► .agentfence/agentfence.db (SQLite)
+            │  findings rows store redacted evidence only
+            ▼
+       API endpoints: GET /api/v1/scans (history)
+                      GET /api/v1/scans/{id} (detail + findings)
+                      GET /api/v1/summary (dashboard overview)
    │
    ▼
 flight_recorder.record() ─► .agentfence/audit.jsonl (hash-chained, redacted)
@@ -83,6 +76,32 @@ expected decisions. Nothing is executed; "attack" refers to the adversarial
 Next.js App Router with a persistent sidebar and eight routes. All displayed
 metrics are explicitly labeled demonstration data until the API integration
 milestone lands. Dark cybersecurity-SaaS aesthetic via Tailwind CSS variables.
+
+## Persistence layer (Milestone 2)
+
+`agentfence_storage` owns all SQLite access:
+
+- **Location:** `.agentfence/agentfence.db` (override with `AGENTFENCE_DB`).
+  The directory and database are created on first use.
+- **Schema versioning:** a `schema_version` table drives ordered migrations;
+  a database written by a *newer* AgentFence is rejected with a clear error
+  rather than silently migrated backwards.
+- **Safety:** parameterized SQL everywhere, `PRAGMA foreign_keys = ON`,
+  transactions around scan+findings inserts, and `DatabaseError` wrapping so
+  callers never see raw driver exceptions.
+- **Redaction before persistence:** finding evidence passes through
+  `agentfence_core.redaction` before an INSERT; raw secret values are never
+  written. Targets are stored as short display paths (parent/name), not full
+  absolute paths.
+
+## Dashboard ↔ API integration
+
+- Typed client in `apps/dashboard/lib/api.ts`; base URL from
+  `NEXT_PUBLIC_AGENTFENCE_API` (default `http://127.0.0.1:8000`).
+- CORS on the API is an explicit allow-list (localhost:3000 variants),
+  configurable via `AGENTFENCE_CORS_ORIGINS`. The API binds to `127.0.0.1`.
+- Pages fetch live data with loading/empty/error states; failures never
+  silently fall back to demo data. A status indicator shows API health.
 
 ## Extension points
 

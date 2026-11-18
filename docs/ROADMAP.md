@@ -15,15 +15,28 @@
 - [x] Next.js dashboard foundation (8 pages, demo data clearly labeled)
 - [x] CI (GitHub Actions), Docker files, docs, Apache-2.0 license
 
-## Milestone 2 — Deeper platform coverage
+## Milestone 2 — Live dashboard & persistence ✅
+
+- [x] SQLite persistence (`.agentfence/agentfence.db`, schema versioning,
+      parameterized SQL, foreign keys, transactions)
+- [x] API: scan persistence, `GET /api/v1/scans` (pagination, sorting,
+      severity filter), `GET /api/v1/scans/{id}`, `GET /api/v1/summary`
+- [x] CORS allow-list for local dashboard origins; localhost binding
+- [x] Scan target validation (local paths only, remote URLs rejected)
+- [x] Dashboard: live Overview, Scans (+ run new scan), Scan Details,
+      Findings (severity filter), MCP inspection — no fabricated metrics
+- [x] Connection status indicator, loading/empty/error states
+- [x] Frontend vitest suite; full API/storage test suite
+
+## Milestone 3 — Deeper platform coverage
 
 - [ ] More scanner rules per platform (Claude Code, Codex, Cursor specifics)
 - [ ] MCP inspector: tool schema analysis, prompt-injection heuristics in
       tool descriptions (static only)
 - [ ] Policy engine: conditions, priorities, policy packs, import/include
-- [ ] Attack Lab: user-authored scenario packs, CI gating (`arena --fail-on-failure`)
-- [ ] Dashboard ↔ local API integration; real scan history via SQLite
-- [ ] SARIF export for GitHub code scanning
+- [ ] Attack Lab: user-authored scenario packs, CI gating (`arena --fail-on-failure`), live Arena API + dashboard connection
+- [ ] Policy engine UI: live policy validation/evaluation from the dashboard
+- [ ] Report artifacts UI backed by persisted report files
 
 ## Milestone 3 — CI and team workflows
 
