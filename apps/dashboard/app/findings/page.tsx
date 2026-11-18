@@ -1,54 +1,16 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { api, type Severity } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
 import { PageHeader, Card, Badge } from "@/components/ui";
+import { ApiStatus } from "@/components/api-status";
+import { Loading, ErrorState, EmptyState, PageShell } from "@/components/states";
 
-type Finding = {
-  id: string;
-  title: string;
-  severity: "critical" | "high" | "medium" | "low" | "info";
-  file: string;
-  remediation: string;
-};
+const SEVERITIES: (Severity | "all")[] = ["all", "critical", "high", "medium", "low", "info"];
 
-// DEMONSTRATION FINDINGS — examples of the structured finding format, not
-// results from a real scan.
-const DEMO_FINDINGS: Finding[] = [
-  {
-    id: "AF-AUTO_APPROVE_ALL",
-    title: "All tool calls auto-approved",
-    severity: "critical",
-    file: "settings.json",
-    remediation: "Disable auto_approve_all; use explicit allow-lists with approval gates.",
-  },
-  {
-    id: "AF-MCP-ENV-SECRET",
-    title: "Possible hardcoded secret in MCP server env",
-    severity: "high",
-    file: ".mcp.json",
-    remediation: "Reference the value from the environment; rotate if committed.",
-  },
-  {
-    id: "AF-MCP-INSECURE-URL",
-    title: "Insecure URL for MCP server",
-    severity: "medium",
-    file: "mcp.json",
-    remediation: "Use https:// endpoints for remote MCP servers.",
-  },
-  {
-    id: "AF-SUSPICIOUS-INSTRUCTION",
-    title: "Suspicious instruction pattern in configuration",
-    severity: "medium",
-    file: "instructions.yaml",
-    remediation: "Remove instructions that override safety behavior.",
-  },
-  {
-    id: "AF-PARSE-ERROR",
-    title: "Configuration file failed to parse",
-    severity: "low",
-    file: "agent.yaml",
-    remediation: "Fix the syntax so automated inspection can evaluate the file.",
-  },
-];
-
-const TONES: Record<Finding["severity"], "critical" | "high" | "medium" | "low" | "info"> = {
+const TONES: Record<string, "critical" | "high" | "medium" | "low" | "info"> = {
   critical: "critical",
   high: "high",
   medium: "medium",
@@ -57,30 +19,88 @@ const TONES: Record<Finding["severity"], "critical" | "high" | "medium" | "low" 
 };
 
 export default function FindingsPage() {
+  const [severity, setSeverity] = useState<Severity | "all">("all");
+
+  // Findings are fetched per-scan via the scan detail endpoint.
+  const details = useApiData(async () => {
+    const list = await api.listScans({ limit: 50 });
+    const results = await Promise.all(
+      list.scans.map(async (s) => {
+        const d = await api.getScan(s.scan_id);
+        return d.findings.map((f) => ({
+          rule_id: f.rule_id,
+          title: f.title,
+          severity: f.severity,
+          file_ref: f.file_ref,
+          remediation: f.remediation,
+          scan_id: s.scan_id,
+        }));
+      }),
+    );
+    return results.flat();
+  }, []);
+
+  const filtered =
+    details.data?.filter((f) => severity === "all" || f.severity === severity) ?? [];
+
   return (
-    <div className="mx-auto max-w-6xl">
+    <PageShell>
       <PageHeader
         title="Findings"
-        description="Structured findings with severity, explanation, and remediation guidance. Secret values are always redacted in evidence. List below is demonstration data."
+        description="Findings aggregated from all persisted scans. Secret values are redacted before storage."
       />
-      <div className="space-y-3">
-        {DEMO_FINDINGS.map((f) => (
-          <Card key={f.id} className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-3">
-                <Badge tone={TONES[f.severity]}>{f.severity.toUpperCase()}</Badge>
-                <span className="font-medium">{f.title}</span>
-              </div>
-              <div className="font-mono text-xs text-muted-foreground">
-                {f.id} · {f.file}
-              </div>
-              <p className="max-w-2xl text-sm text-muted-foreground">
-                <span className="text-foreground">Remediation:</span> {f.remediation}
-              </p>
-            </div>
-          </Card>
+      <ApiStatus />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {SEVERITIES.map((s) => (
+          <button
+            key={s}
+            onClick={() => setSeverity(s)}
+            className={`rounded-lg border px-3 py-1.5 text-xs capitalize ${
+              severity === s
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            {s}
+          </button>
         ))}
       </div>
-    </div>
+
+      {details.state === "loading" ? (
+        <Loading label="Loading findings…" />
+      ) : details.state === "error" ? (
+        <ErrorState message={details.error ?? "Unknown error"} onRetry={details.reload} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title={severity === "all" ? "No findings recorded" : `No ${severity} findings`}
+          hint="Run a scan from the Scans page to collect findings."
+        />
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((f, i) => (
+            <Card key={`${f.scan_id}-${f.rule_id}-${i}`} className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge tone={TONES[f.severity] ?? "info"}>{f.severity.toUpperCase()}</Badge>
+                <span className="font-medium">{f.title}</span>
+                <Link
+                  href={`/scans/${f.scan_id}`}
+                  className="ml-auto text-xs text-primary hover:underline"
+                >
+                  View scan →
+                </Link>
+              </div>
+              <div className="font-mono text-xs text-muted-foreground">
+                {f.rule_id}
+                {f.file_ref ? ` · ${f.file_ref}` : ""}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <span className="text-foreground">Remediation:</span> {f.remediation}
+              </p>
+            </Card>
+          ))}
+        </div>
+      )}
+    </PageShell>
   );
 }
