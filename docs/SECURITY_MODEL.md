@@ -47,14 +47,20 @@ and the trust assumptions involved. It is normative for contributors.
 - **The scan path validator is not a sandbox.** It rejects remote URLs and
   requires existing local paths, but the local user is already trusted by
   assumption; the API is not hardened against a malicious local process.
-- **Local API session protection (Milestone 3).** CORS alone cannot stop
-  browser-originated abuse (DNS rebinding bypasses it; simple form posts
-  ignore it). The API therefore requires a random local session token on
-  every mutating request, validates Origin on mutations, and rejects
-  non-localhost Host headers on all requests. Remaining limitation: anything
-  running on the machine as the local user can read
-  `.agentfence/.api-token` and call the API — that is inside the
-  trusted-local-user assumption, not a bypass.
+- **Local API session protection (Milestone 3, remediated).** CORS alone
+  cannot stop browser-originated abuse (DNS rebinding bypasses it; simple
+  form posts ignore it). The API requires a random local session token on
+  every mutating request, validates Origin on mutations (missing Origin is
+  allowed only with a valid token, i.e. for non-browser clients), rejects
+  malformed/untrusted Host headers on all requests (including the wildcard
+  bind address 0.0.0.0), rate-limits mutations, enforces a request-body
+  size cap while receiving (chunked-safe), and redacts policy/Arena data
+  before SQLite persistence. Remaining limitation: anything running on the
+  machine as the local user can read `.agentfence/.api-token` and call the
+  API — that is inside the trusted-local-user assumption, not a bypass.
+  The token is necessarily readable by dashboard JavaScript (it is sent as
+  a header from the browser); it protects only against *other* origins,
+  not against XSS in the dashboard itself.
 
 ## Trust assumptions
 
@@ -64,11 +70,11 @@ and the trust assumptions involved. It is normative for contributors.
   (512 KiB), and parse failures become findings rather than crashes.
 - The Attack Lab's built-in policies are examples, not security defaults you
   should rely on for production decisions.
-- **The local API is not a hardened network service.** It binds to 127.0.0.1
-  and enforces session Host, rate-limit, and body-size checks,
-  but anyone or anything already running on your machine can call it. Do not
-  expose the API port beyond localhost (e.g. do not run it with
-  `--host 0.0.0.0` on a shared network).
+- **The local API is not a hardened network service.** It binds to
+  127.0.0.1 and enforces session-token, Origin, Host, rate-limit, and
+  body-size checks, but anyone or anything already running on your machine
+  can call it. Do not expose the API port beyond localhost (e.g. do not run
+  it with `--host 0.0.0.0` on a shared network).
 
 ## Reporting a vulnerability
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import {
   Activity,
   FileSearch,
@@ -25,8 +26,33 @@ const NAV = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+function SidebarNav() {
   const pathname = usePathname();
+  return (
+    <nav className="flex-1 space-y-1 px-3">
+      {NAV.map(({ href, label, icon: Icon }) => {
+        const active = pathname === href;
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+              active
+                ? "bg-sidebar-accent font-medium text-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function Sidebar() {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
       <div className="flex items-center gap-3 px-6 py-6">
@@ -40,26 +66,9 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-      <nav className="flex-1 space-y-1 px-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                active
-                  ? "bg-sidebar-accent font-medium text-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
+      <Suspense fallback={<div className="flex-1" />}>
+        <SidebarNav />
+      </Suspense>
       <div className="border-t border-sidebar-border px-6 py-4">
         <div className="text-[11px] leading-relaxed text-muted-foreground">
           Local-first · No telemetry

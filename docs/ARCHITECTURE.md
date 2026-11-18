@@ -112,13 +112,28 @@ abuse of the unauthenticated local API:
 
 1. **Session token** (`X-AgentFence-Session` header) required on every
    mutating request; random 256-bit token persisted 0600 at
-   `.agentfence/.api-token`, stable across API restarts.
-2. **Origin validation** on mutations — only the configured local dashboard
-   origins are accepted.
-3. **Host validation on every request** — non-localhost Host headers are
-   rejected (DNS-rebinding defense; CORS does not protect against this).
-4. **Rate limiting** on mutations (30/min per client by default) and a
-   64 KiB request-body cap.
+   `.agentfence/.api-token` (symlinks and unsafe file types are replaced;
+   permissive existing files are tightened; creation is race-safe via
+   `O_EXCL`), stable across API restarts.
+2. **Origin validation** on mutations — requests carrying an Origin header
+   must come from the configured local dashboard origins. A mutation with a
+   *missing* Origin is permitted only together with a valid session token
+   (non-browser clients such as curl and the CLI). Browsers always send
+   Origin on cross-site requests, so missing-Origin + valid-token is not a
+   CSRF path.
+3. **Host validation on every request** — the Host authority is parsed
+   (hostnames, ports, IPv6 literals) and normalized against an explicit
+   localhost allowlist. Missing, malformed, wildcard-bind (0.0.0.0), and
+   untrusted values are rejected. This is the DNS-rebinding defense;
+   CORS does not protect against this.
+4. **Rate limiting** on mutations (30/min per client by default).
+5. **Request-body size cap** (64 KiB) enforced *while receiving* the body —
+   including chunked requests without Content-Length — with oversized
+   payloads rejected (413) and valid bodies replayed to the endpoint.
+6. **Persistence redaction**: policy evaluation details, error messages,
+   and Arena explanations pass through the redaction layer before being
+   written to SQLite, so submitted YAML cannot leak credentials into the
+   database or API responses.
 
 ## Dashboard ↔ API integration
 

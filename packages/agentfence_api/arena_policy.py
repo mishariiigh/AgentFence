@@ -8,12 +8,14 @@ payload execution, no external systems.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 from agentfence_attack_lab.runner import run_scenarios
 from agentfence_attack_lab.scenarios import ScenarioError, load_scenarios
+from agentfence_core.redaction import redact
 from agentfence_policy_engine.evaluator import evaluate
 from agentfence_policy_engine.policy import (
     PolicyValidationError,
@@ -28,7 +30,44 @@ from pydantic import BaseModel, Field
 router = APIRouter()
 
 # Directory containing bundled declarative scenarios (read-only data).
-SCENARIO_DIRS = [Path("benchmarks/scenarios"), Path(".agentfence/scenarios")]
+# Anchored to the repository/package root so discovery does not depend on the
+# shell's current working directory.
+#
+# Workspace-root resolution, in priority order:
+#   1. AGENTFENCE_WORKSPACE env var (explicit workspace root)
+#   2. The directory containing the database (default: .agentfence/), which
+#      tracks the user's actual workspace regardless of the launch CWD
+#   3. The repository root (bundled data only) as a last resort
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _workspace_root() -> Path:
+    """Resolve the user's workspace root (documented behavior)."""
+    explicit = os.environ.get("AGENTFENCE_WORKSPACE")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    # Derive from the database location: AGENTFENCE_DB points at
+    # <workspace>/.agentfence/agentfence.db by default.
+    db = os.environ.get("AGENTFENCE_DB", ".agentfence/agentfence.db")
+    db_path = Path(db).expanduser()
+    parent = db_path.parent
+    if parent.name == ".agentfence":
+        return parent.parent.resolve()
+    if db_path.is_absolute():
+        return db_path.parent.resolve()
+    # Relative and not under .agentfence/: anchor at the repo root so the
+    # shell's CWD cannot change which files are discovered.
+    return _REPO_ROOT
+
+
+SCENARIO_DIRS = [
+    _REPO_ROOT / "benchmarks" / "scenarios",
+    _workspace_root() / ".agentfence" / "scenarios",
+]
+POLICY_DIRS = [
+    _REPO_ROOT / "policies",
+    _workspace_root() / ".agentfence" / "policies",
+]
 
 
 class ArenaRunRequest(BaseModel):
@@ -90,6 +129,11 @@ class PolicyEvaluateRequest(BaseModel):
     resource: str = Field(min_length=1, max_length=500)
 
 
+def _safe_problems(problems: list[str]) -> list[str]:
+    """Redact and bound error/problem messages so secrets cannot leak via API responses."""
+    return [redact(p)[:300] for p in problems]
+
+
 def _scenario_dirs() -> list[Path]:
     return [p for p in SCENARIO_DIRS if p.is_dir()]
 
@@ -106,7 +150,7 @@ def list_arena_scenarios() -> list[ScenarioInfo]:
     try:
         scenarios = _load_all_scenarios()
     except ScenarioError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=redact(str(exc))) from exc
     return [
         ScenarioInfo(
             name=s.name,
@@ -143,7 +187,7 @@ def run_arena(request: ArenaRunRequest, http_request: Request) -> ArenaRunRespon
     try:
         run_id = store.save_run(summary)
     except DatabaseError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
     return ArenaRunResponse(
         run_id=run_id,
         total=summary.total,
@@ -170,13 +214,12 @@ def list_arena_runs(
 ) -> ArenaRunListResponse:
     store: ArenaStore = request.app.state.arena_store
     try:
-        runs = store.list_runs(limit=limit, offset=offset)
+        runs, total = store.list_runs(limit=limit, offset=offset)
     except DatabaseError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    total_row = store._conn.execute("SELECT COUNT(*) AS c FROM arena_runs").fetchone()
+        raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
     return ArenaRunListResponse(
         runs=[ArenaRunSummary.model_validate(r) for r in runs],
-        total=int(total_row["c"]),
+        total=total,
         limit=max(1, min(limit, 100)),
         offset=max(0, offset),
     )
@@ -199,7 +242,7 @@ def get_arena_run(run_id: str, request: Request) -> dict[str, Any]:
 @router.get("/api/v1/policies")
 def list_policies() -> dict[str, Any]:
     """List bundled example policies (YAML files in policies/ and .agentfence/policies/)."""
-    dirs = [Path("policies"), Path(".agentfence/policies")]
+    dirs = POLICY_DIRS
     items: list[dict[str, Any]] = []
     for d in dirs:
         if not d.is_dir():
@@ -244,7 +287,7 @@ def list_policies() -> dict[str, Any]:
 def validate_policy(request: PolicyValidateRequest) -> dict[str, Any]:
     """Validate an inline policy YAML document. Nothing is written to disk."""
     problems = validate_policy_text(request.content)
-    return {"valid": not problems, "problems": problems}
+    return {"valid": not problems, "problems": _safe_problems(problems)}
 
 
 @router.post("/api/v1/policies/evaluate")
@@ -276,13 +319,13 @@ def evaluate_policy(request: PolicyEvaluateRequest, http_request: Request) -> di
                 status_code=422,
                 detail={
                     "message": "policy YAML is invalid",
-                    "problems": [str(exc)],
+                    "problems": _safe_problems([str(exc)]),
                     "evaluation_id": evaluation_id,
                 },
             ) from exc
         source = "(inline)"
     else:
-        dirs = [Path("policies"), Path(".agentfence/policies")]
+        dirs = POLICY_DIRS
         found: Path | None = None
         for d in dirs:
             if not d.is_dir():
@@ -349,5 +392,5 @@ def policy_history(request: Request, limit: int = 20, offset: int = 0) -> dict[s
     try:
         items = store.list_evaluations(limit=limit, offset=offset)
     except DatabaseError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
     return {"evaluations": items, "limit": limit, "offset": offset}

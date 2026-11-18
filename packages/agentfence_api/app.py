@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from agentfence_core.models import ScanResult
+from agentfence_core.redaction import redact
 from agentfence_mcp_inspector.inspector import McpInspectError, inspect_mcp_config
 from agentfence_risk_engine.scoring import score_findings
 from agentfence_scanner.engine import ScanError, scan_path
@@ -23,6 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from agentfence_api.arena_policy import router as arena_policy_router
+from agentfence_api.body_limit import body_limit_middleware
 from agentfence_api.security import TOKEN_HEADER, SecurityConfig
 
 API_VERSION = "0.2.0"
@@ -121,6 +123,10 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type", TOKEN_HEADER],
     )
+    # Body-size enforcement while receiving (chunked-safe, pure ASGI).
+    app.add_middleware(
+        lambda app: body_limit_middleware(app, max_body_bytes=sec.max_body_bytes)
+    )
 
     # Arena + policy stores and routes (schema v2 tables).
     app.state.arena_store = ArenaStore(store.db_path)
@@ -129,10 +135,6 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
 
     @app.middleware("http")
     async def local_security_middleware(request: Request, call_next: Any):  # noqa: ANN201
-        # Request body size limit (protects against oversized payloads).
-        content_length = request.headers.get("content-length")
-        if content_length and content_length.isdigit() and int(content_length) > sec.max_body_bytes:
-            return JSONResponse(status_code=413, content={"detail": "request body too large"})
         reason = sec.check_request(
             request.method,
             {k.lower(): v for k, v in request.headers.items()},
@@ -153,11 +155,11 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
         try:
             result = scan_path(target)
         except ScanError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=redact(str(exc))[:300]) from exc
         try:
             scan_id = store.save_scan(result, scanner_version=API_VERSION)
         except DatabaseError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
         return ScanStartedResponse(
             scan_id=scan_id, result=result, risk_score=score_findings(result.findings)
         )
@@ -175,11 +177,11 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except DatabaseError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
         try:
             total = store.summary()["total_scans"]
         except DatabaseError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
         return ScanListResponse(
             scans=[ScanSummary.model_validate(s) for s in scans],
             total=total,
@@ -192,7 +194,7 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
         try:
             detail = store.get_scan(scan_id)
         except DatabaseError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
         if detail is None:
             raise HTTPException(status_code=404, detail=f"scan not found: {scan_id}")
         return ScanDetailResponse(
@@ -206,7 +208,7 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
         try:
             return store.summary()
         except DatabaseError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
 
     @app.post("/api/v1/mcp/inspect", response_model=ScanStartedResponse)
     def mcp_inspect(request: ScanRequest) -> ScanStartedResponse:
@@ -215,13 +217,13 @@ def create_app(db_path: Path | None = None, security: SecurityConfig | None = No
         try:
             result = inspect_mcp_config(target)
         except McpInspectError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=400, detail=redact(str(exc))[:300]) from exc
         try:
             scan_id = store.save_scan(
                 result, scanner_version=API_VERSION, kind="mcp_inspection"
             )
         except DatabaseError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=500, detail=redact(str(exc))[:300]) from exc
         return ScanStartedResponse(
             scan_id=scan_id, result=result, risk_score=score_findings(result.findings)
         )
