@@ -28,7 +28,19 @@
 - [x] Connection status indicator, loading/empty/error states
 - [x] Frontend vitest suite; full API/storage test suite
 
-## Milestone 3 — Deeper platform coverage
+## Milestone 3 — Arena & policy integration ✅
+
+- [x] Local API security: session token, Origin/Host validation, DNS-rebinding
+      defense, rate limiting, request-size cap (automated tests)
+- [x] Arena API: scenario catalogue, run (subset/all), run history + detail,
+      persisted to SQLite (v2 schema)
+- [x] Policies API: catalogue, safe in-memory validation (never writes to
+      disk), deterministic evaluation with rule explanations, history
+- [x] Dashboard: Attack Lab (catalogue, run, results, history), Policies
+      (validate/evaluate UI, catalogue, history), Reports (real data)
+- [x] Full test coverage for new engines, routes, security, and UI
+
+## Milestone 4 — Deeper platform coverage
 
 - [ ] More scanner rules per platform (Claude Code, Codex, Cursor specifics)
 - [ ] MCP inspector: tool schema analysis, prompt-injection heuristics in
@@ -36,7 +48,8 @@
 - [ ] Policy engine: conditions, priorities, policy packs, import/include
 - [ ] Attack Lab: user-authored scenario packs, CI gating (`arena --fail-on-failure`), live Arena API + dashboard connection
 - [ ] Policy engine UI: live policy validation/evaluation from the dashboard
-- [ ] Report artifacts UI backed by persisted report files
+- [ ] Report artifacts UI backed by persisted report files (SARIF export for
+      GitHub code scanning)
 
 ## Milestone 3 — CI and team workflows
 

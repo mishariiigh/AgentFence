@@ -77,22 +77,48 @@ Next.js App Router with a persistent sidebar and eight routes. All displayed
 metrics are explicitly labeled demonstration data until the API integration
 milestone lands. Dark cybersecurity-SaaS aesthetic via Tailwind CSS variables.
 
-## Persistence layer (Milestone 2)
+## Persistence layer (Milestone 2 & 3)
 
 `agentfence_storage` owns all SQLite access:
 
 - **Location:** `.agentfence/agentfence.db` (override with `AGENTFENCE_DB`).
   The directory and database are created on first use.
-- **Schema versioning:** a `schema_version` table drives ordered migrations;
-  a database written by a *newer* AgentFence is rejected with a clear error
-  rather than silently migrated backwards.
+- **Schema versioning:** a `schema_version` table drives ordered migrations.
+  v1 = scans/findings; **v2 adds `arena_runs` and `policy_evaluations`**.
+  A database written by a *newer* AgentFence is rejected with a clear error.
 - **Safety:** parameterized SQL everywhere, `PRAGMA foreign_keys = ON`,
-  transactions around scan+findings inserts, and `DatabaseError` wrapping so
-  callers never see raw driver exceptions.
+  transactions around multi-row inserts, `DatabaseError` wrapping.
 - **Redaction before persistence:** finding evidence passes through
-  `agentfence_core.redaction` before an INSERT; raw secret values are never
-  written. Targets are stored as short display paths (parent/name), not full
-  absolute paths.
+  `agentfence_core.redaction` before an INSERT. Arena explanations and policy
+  rules contain no secret material. Targets are stored as short display paths.
+
+## Arena & policy integration (Milestone 3)
+
+- Arena routes execute the *existing* declarative engine
+  (`agentfence_attack_lab`): scenarios are discovered from
+  `benchmarks/scenarios/` and `.agentfence/scenarios/`, run via
+  `run_scenarios()`, and persisted with per-scenario explanations.
+- Policy routes execute the *existing* deterministic engine
+  (`agentfence_policy_engine`). Inline policy YAML is validated in memory —
+  **never written to disk** — and an invalid policy can never produce an
+  `allow` decision.
+- Both route groups live in `agentfence_api/arena_policy.py` behind a shared
+  `APIRouter`, and reuse the security middleware (session token, rate limit).
+
+## Local API security model
+
+`agentfence_api/security.py` implements defense against browser-originated
+abuse of the unauthenticated local API:
+
+1. **Session token** (`X-AgentFence-Session` header) required on every
+   mutating request; random 256-bit token persisted 0600 at
+   `.agentfence/.api-token`, stable across API restarts.
+2. **Origin validation** on mutations — only the configured local dashboard
+   origins are accepted.
+3. **Host validation on every request** — non-localhost Host headers are
+   rejected (DNS-rebinding defense; CORS does not protect against this).
+4. **Rate limiting** on mutations (30/min per client by default) and a
+   64 KiB request-body cap.
 
 ## Dashboard ↔ API integration
 

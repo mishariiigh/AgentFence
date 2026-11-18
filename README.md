@@ -25,7 +25,8 @@ AI agents hold powerful capabilities: file access, shell execution, network call
 | SQLite scan history | ✅ Working | `.agentfence/agentfence.db`, API: `GET /api/v1/scans` |
 | Local API (health, scan, history, MCP inspect) | ✅ Working | `agentfence dashboard` |
 | Dashboard UI (live data for Overview/Scans/Findings/MCP) | ✅ Working | `npm run dev` in `apps/dashboard` |
-| Attack Lab & Policies UI | 🟡 Demo/planned views | see docs/ROADMAP.md |
+| Attack Lab & Policies UI | ✅ Working | `agentfence arena` + dashboard `/arena`, `/policies` (live APIs) |
+| Local session-token API protection | ✅ Working | auto-generated at `.agentfence/.api-token` |
 | Runtime protection / agent enforcement | ❌ Not implemented | see docs/SECURITY_MODEL.md |
 
 ## Security guarantees (enforced in code)
@@ -112,8 +113,24 @@ Scan history persists across API restarts in SQLite at
 `.agentfence/agentfence.db` (override with `AGENTFENCE_DB`). CORS is limited
 to localhost dashboard origins.
 
-Attack Lab, Policies, Reports, and Settings pages remain clearly-labelled
-demonstration/planned views.
+Attack Lab, Policies, and Reports pages consume live APIs (Arena runs, policy
+validation/evaluation, persisted history). Settings remains informational.
+
+### Local session token (API security)
+
+Mutating API calls require a session token to stop untrusted websites from
+driving the local API (CORS alone is not enough — see docs/SECURITY_MODEL.md).
+The token is auto-generated on API start at `.agentfence/.api-token` (0600).
+To connect the dashboard:
+
+```bash
+TOKEN=$(cat .agentfence/.api-token)
+cd apps/dashboard
+printf 'NEXT_PUBLIC_AGENTFENCE_API=http://127.0.0.1:8000\nNEXT_PUBLIC_AGENTFENCE_TOKEN=%s\n' "$TOKEN" > .env.local
+npm run dev
+```
+
+CLI users don't need the token (CLI talks to the engine directly).
 
 ## Architecture
 

@@ -12,12 +12,18 @@ from typing import Any
 
 from agentfence_core.models import ScanResult
 from agentfence_mcp_inspector.inspector import McpInspectError, inspect_mcp_config
+from agentfence_risk_engine.scoring import score_findings
 from agentfence_scanner.engine import ScanError, scan_path
+from agentfence_storage.arena_policy import ArenaStore, PolicyStore
 from agentfence_storage.database import DatabaseError
 from agentfence_storage.scans import ScanStore
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+from agentfence_api.arena_policy import router as arena_policy_router
+from agentfence_api.security import TOKEN_HEADER, SecurityConfig
 
 API_VERSION = "0.2.0"
 
@@ -93,15 +99,10 @@ def _resolve_target(raw: str) -> Path:
     return target
 
 
-def create_app(db_path: Path | None = None) -> FastAPI:
+def create_app(db_path: Path | None = None, security: SecurityConfig | None = None) -> FastAPI:
     store = ScanStore(db_path or default_db_path())
-    allowed_origins = [
-        o.strip()
-        for o in os.environ.get(
-            "AGENTFENCE_CORS_ORIGINS", ",".join(DEFAULT_ALLOWED_ORIGINS)
-        ).split(",")
-        if o.strip()
-    ]
+    sec = security or SecurityConfig()
+    allowed_origins = sorted(sec.allowed_origins)
 
     app = FastAPI(
         title="AgentFence API",
@@ -118,8 +119,28 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         allow_origins=allowed_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", TOKEN_HEADER],
     )
+
+    # Arena + policy stores and routes (schema v2 tables).
+    app.state.arena_store = ArenaStore(store.db_path)
+    app.state.policy_store = PolicyStore(store.db_path)
+    app.include_router(arena_policy_router)
+
+    @app.middleware("http")
+    async def local_security_middleware(request: Request, call_next: Any):  # noqa: ANN201
+        # Request body size limit (protects against oversized payloads).
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > sec.max_body_bytes:
+            return JSONResponse(status_code=413, content={"detail": "request body too large"})
+        reason = sec.check_request(
+            request.method,
+            {k.lower(): v for k, v in request.headers.items()},
+            request.client.host if request.client else "unknown",
+        )
+        if reason:
+            return JSONResponse(status_code=403, content={"detail": reason})
+        return await call_next(request)
 
     @app.get("/api/v1/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -137,8 +158,6 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             scan_id = store.save_scan(result, scanner_version=API_VERSION)
         except DatabaseError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        from agentfence_risk_engine.scoring import score_findings
-
         return ScanStartedResponse(
             scan_id=scan_id, result=result, risk_score=score_findings(result.findings)
         )
@@ -203,8 +222,6 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             )
         except DatabaseError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        from agentfence_risk_engine.scoring import score_findings
-
         return ScanStartedResponse(
             scan_id=scan_id, result=result, risk_score=score_findings(result.findings)
         )

@@ -6,11 +6,23 @@ import json
 from pathlib import Path
 
 from agentfence_api.app import create_app
+from agentfence_api.security import TOKEN_HEADER, SecurityConfig
 from fastapi.testclient import TestClient
 
 
 def _client(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(db_path=tmp_path / "agentfence.db"))
+    """Client with a deterministic test token injected on mutations."""
+    sec = SecurityConfig(token="test-token", rate_limit=1000)
+    client = TestClient(create_app(db_path=tmp_path / "agentfence.db", security=sec))
+    original_post = client.post
+
+    def post(path: str, **kwargs: object) -> object:
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers[TOKEN_HEADER] = "test-token"
+        return original_post(path, headers=headers, **kwargs)  # type: ignore[arg-type]
+
+    client.post = post  # type: ignore[method-assign]
+    return client
 
 
 def test_health(tmp_path: Path) -> None:
