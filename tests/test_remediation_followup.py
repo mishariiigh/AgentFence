@@ -456,6 +456,7 @@ def test_parse_host_accepts(value: str, expected: str) -> None:
         "localhost:-1",          # negative port
         "[::1:8000",             # malformed IPv6 brackets
         "[::1",                  # unclosed bracket
+        "[::1]:8000junk",        # junk after IPv6 port
         "user@localhost",        # userinfo
         "localhost extra",       # whitespace inside
         "",                      # empty
@@ -473,6 +474,37 @@ def test_parse_host_accepts(value: str, expected: str) -> None:
 def test_parse_host_rejects(value: str) -> None:
     with pytest.raises(ValueError):
         parse_host_authority(value)
+
+
+def test_parse_host_trailing_dot_preserved_then_allowlist_rejected(
+    tmp_path: Path,
+) -> None:
+    """A trailing dot is a distinct DNS root, not something to strip: the
+    parser preserves it so the local-host allowlist ('localhost', no dot)
+    rejects it."""
+    assert parse_host_authority("localhost.") == "localhost."
+    assert parse_host_authority("localhost.:80") == "localhost."
+    assert parse_host_authority("127.0.0.1.:80") == "127.0.0.1."
+    client = _client(tmp_path)
+    assert client.get("/api/v1/health", headers={"Host": "localhost."}).status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("[::1]", "::1"),
+        ("[::1]:", "::1"),          # empty port on a bracketed literal
+        ("[0:0:0:0:0:0:0:1]", "0:0:0:0:0:0:0:1"),
+    ],
+)
+def test_parse_host_bracketed_ipv6_variants(value: str, expected: str) -> None:
+    assert parse_host_authority(value) == expected
+
+
+def test_parse_host_rejects_malformed_non_ascii_and_percent() -> None:
+    for bad in ("loc\u00e4lhost", "127.0.0.1%25", "[::1\u0000]"):
+        with pytest.raises(ValueError):
+            parse_host_authority(bad)
 
 
 def test_host_with_invalid_port_rejected_by_middleware(tmp_path: Path) -> None:

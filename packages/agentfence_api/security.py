@@ -103,6 +103,12 @@ def parse_host_authority(value: str) -> str:
 class SecurityConfig:
     """Per-process security configuration for the local API."""
 
+    # Serializes load_or_create_token() across threads in THIS process. The
+    # on-disk protocol (O_CREAT|O_EXCL + O_NOFOLLOW re-open) remains the
+    # authority for cross-process races; this lock only prevents in-process
+    # creators from each writing a distinct token to the same file.
+    _token_lock = threading.Lock()
+
     def __init__(
         self,
         token: str | None = None,
@@ -140,6 +146,11 @@ class SecurityConfig:
     def load_or_create_token() -> str:
         """Load or create the local session token safely.
 
+        In-process concurrent callers are serialized by a class-level lock
+        (see ``SecurityConfig._token_lock``); the on-disk O_CREAT|O_EXCL /
+        O_NOFOLLOW protocol below protects cross-process races.
+        
+
         All read/tighten operations are **descriptor-based**: the file is
         opened with ``O_NOFOLLOW`` (symlinks are never followed at open
         time), verified as a regular file via ``os.fstat`` on that
@@ -169,6 +180,14 @@ class SecurityConfig:
           ``shutil.rmtree`` on the exact token path only.
         - The token value is preserved across normal restarts.
         """
+        # In-process threads must not race each other into writing different
+        # tokens; cross-process races are still handled by the disk protocol.
+        with SecurityConfig._token_lock:
+            return SecurityConfig._load_or_create_token_unlocked()
+
+    @staticmethod
+    def _load_or_create_token_unlocked() -> str:
+        """Implementation of ``load_or_create_token`` (caller holds the lock)."""
         path = SecurityConfig.token_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         import stat as stat_module
