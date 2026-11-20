@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: (
@@ -50,6 +50,35 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
         "CREATE INDEX IF NOT EXISTS idx_scans_created ON scans(created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_findings_scan ON findings(scan_id)",
     ),
+    2: (
+        """
+        CREATE TABLE IF NOT EXISTS arena_runs (
+            run_id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            scenario_count INTEGER NOT NULL,
+            passed INTEGER NOT NULL,
+            failed INTEGER NOT NULL,
+            score REAL NOT NULL,
+            results_json TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_arena_created ON arena_runs(created_at DESC)",
+        """
+        CREATE TABLE IF NOT EXISTS policy_evaluations (
+            evaluation_id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            policy_name TEXT NOT NULL,
+            policy_valid INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            resource TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            matched_rule TEXT,
+            explanation TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_policy_eval_created ON policy_evaluations(created_at DESC)",
+    ),
 }
 
 
@@ -61,7 +90,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
     """Open (creating if needed) the SQLite database and apply migrations."""
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         _migrate(conn)

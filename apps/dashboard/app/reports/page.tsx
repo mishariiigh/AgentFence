@@ -1,52 +1,146 @@
-import { PageHeader, Card, Badge } from "@/components/ui";
+"use client";
 
-// DEMONSTRATION REPORTS — report artifacts produced by
-// `agentfence scan <path> --report <file>`; listing below is illustrative.
-const DEMO_REPORTS = [
-  { name: "agentfence-report-settings.json", format: "JSON", risk: 24, when: "2026-11-17 14:05" },
-  { name: "agentfence-report-mcp.md", format: "Markdown", risk: 45, when: "2026-11-17 13:45" },
-  { name: "agentfence-report-clean.json", format: "JSON", risk: 0, when: "2026-11-17 13:15" },
-];
+import Link from "next/link";
+import { api } from "@/lib/api";
+import { useApiData } from "@/lib/useApiData";
+import { PageHeader, Card, Badge } from "@/components/ui";
+import { ApiStatus } from "@/components/api-status";
+import { Loading, ErrorState, EmptyState, PageShell } from "@/components/states";
 
 export default function ReportsPage() {
+  const scans = useApiData(() => api.listScans({ limit: 10 }), []);
+  const arena = useApiData(() => api.arenaRuns(10), []);
+  const policyHistory = useApiData(() => api.policyHistory(10), []);
+
   return (
-    <div className="mx-auto max-w-6xl">
+    <PageShell>
       <PageHeader
         title="Reports"
-        description="Structured security reports and evidence. Reports redact secret values automatically and record that inspection was read-only."
+        description="Report information derived from persisted local data: security scans, Arena runs, and policy evaluations. No metrics are invented."
       />
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="pb-3 pr-4 font-medium">Report</th>
-                <th className="pb-3 pr-4 font-medium">Format</th>
-                <th className="pb-3 pr-4 font-medium">Risk score</th>
-                <th className="pb-3 font-medium">Generated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DEMO_REPORTS.map((r) => (
-                <tr key={r.name} className="border-b last:border-0">
-                  <td className="py-3 pr-4 font-mono text-xs">{r.name}</td>
-                  <td className="py-3 pr-4">{r.format}</td>
-                  <td className="py-3 pr-4">
-                    <Badge tone={r.risk === 0 ? "success" : r.risk >= 40 ? "high" : "medium"}>
-                      {r.risk}/100
+      <ApiStatus />
+
+      <div className="space-y-6">
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Security scan reports</h2>
+            <Link href="/scans" className="text-xs text-primary hover:underline">
+              Manage scans →
+            </Link>
+          </div>
+          {scans.state === "loading" ? (
+            <Loading />
+          ) : scans.state === "error" ? (
+            <ErrorState message={scans.error ?? "Unknown error"} onRetry={scans.reload} />
+          ) : !scans.data || scans.data.scans.length === 0 ? (
+            <EmptyState title="No scan reports" hint="Run a scan to generate report data." />
+          ) : (
+            <ul className="divide-y divide-border text-sm">
+              {scans.data.scans.map((s) => (
+                <li key={s.scan_id} className="flex items-center justify-between py-2.5">
+                  <Link href={`/scans/${s.scan_id}`} className="font-mono text-xs hover:text-primary">
+                    {s.target_display}
+                  </Link>
+                  <span className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {s.created_at}
+                    <Badge tone={s.risk_score >= 40 ? "high" : s.risk_score > 0 ? "medium" : "success"}>
+                      risk {s.risk_score}/100 · {s.total_findings} finding(s)
                     </Badge>
-                  </td>
-                  <td className="py-3 text-muted-foreground">{r.when}</td>
-                </tr>
+                  </span>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      <p className="mt-4 text-xs text-muted-foreground">
-        Generate reports:{" "}
-        <code className="rounded bg-muted px-1.5 py-0.5">agentfence scan &lt;path&gt; --report report.json</code>
-      </p>
-    </div>
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Arena run reports</h2>
+            <Link href="/arena" className="text-xs text-primary hover:underline">
+              Open Attack Lab →
+            </Link>
+          </div>
+          {arena.state === "loading" ? (
+            <Loading />
+          ) : arena.state === "error" ? (
+            <ErrorState message={arena.error ?? "Unknown error"} onRetry={arena.reload} />
+          ) : !arena.data || arena.data.runs.length === 0 ? (
+            <EmptyState title="No Arena reports" hint="Run the scenario suite to generate report data." />
+          ) : (
+            <ul className="divide-y divide-border text-sm">
+              {arena.data.runs.map((r) => (
+                <li key={r.run_id} className="flex items-center justify-between py-2.5">
+                  <span className="font-mono text-xs">{r.run_id.slice(0, 8)}</span>
+                  <span className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {r.created_at}
+                    <Badge tone={r.failed === 0 ? "success" : "critical"}>
+                      {r.passed}/{r.scenario_count} passed · {Math.round(r.score * 100)}%
+                    </Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Policy evaluation reports</h2>
+            <Link href="/policies" className="text-xs text-primary hover:underline">
+              Open Policies →
+            </Link>
+          </div>
+          {policyHistory.state === "loading" ? (
+            <Loading />
+          ) : policyHistory.state === "error" ? (
+            <ErrorState
+              message={policyHistory.error ?? "Unknown error"}
+              onRetry={policyHistory.reload}
+            />
+          ) : !policyHistory.data || policyHistory.data.evaluations.length === 0 ? (
+            <EmptyState title="No policy evaluations" hint="Evaluate a policy action to create history." />
+          ) : (
+            <ul className="divide-y divide-border text-sm">
+              {policyHistory.data.evaluations.map((e) => (
+                <li key={e.evaluation_id} className="flex items-center justify-between py-2.5">
+                  <span className="text-xs">
+                    <span className="font-mono">{e.policy_name}</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {e.action} on {e.resource}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {e.created_at}
+                    <Badge
+                      tone={
+                        e.decision === "allow"
+                          ? "success"
+                          : e.decision === "deny"
+                            ? "critical"
+                            : "warning"
+                      }
+                    >
+                      {e.decision}
+                    </Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="mb-2 text-sm font-semibold">Unavailable report types</h2>
+          <p className="text-sm text-muted-foreground">
+            Exportable artifact reports (SARIF, PDF, signed evidence bundles) are
+            <Badge tone="neutral">planned</Badge> and listed in{" "}
+            <code className="rounded bg-muted px-1">docs/ROADMAP.md</code>. CLI-generated
+            JSON/Markdown scan reports remain available via{" "}
+            <code className="rounded bg-muted px-1">agentfence scan &lt;path&gt; --report</code>.
+          </p>
+        </Card>
+      </div>
+    </PageShell>
   );
 }

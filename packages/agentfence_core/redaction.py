@@ -25,6 +25,14 @@ _VALUE_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"(?i)(api[_-]?key|secret|token|password|passwd|credential)\s*[:=]\s*[\"']?"
         r"([^\s\"']{8,})"
     ),
+    # Bare secret-shaped tokens appearing anywhere (catches values inside
+    # error messages, YAML snippets, URLs): a key-like word somewhere on the
+    # line, followed by a long secret-like run of characters.
+    re.compile(r"(?im)\b(?:api[_-]?key|secret|token|password|credential|key)\b[^\n]{0,80}?"
+               r"([A-Za-z0-9_\-]{16,})"),
+    # Secret-prefix tokens with no key context (OpenAI/Anthropic-style values
+    # embedded in free text such as YAML error snippets).
+    re.compile(r"\b(sk-[A-Za-z0-9_\-]{12,}|sk-ant-[A-Za-z0-9_\-]{12,})"),
 )
 
 

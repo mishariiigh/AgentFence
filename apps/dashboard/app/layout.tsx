@@ -19,7 +19,12 @@ export const metadata: Metadata = {
     "Scan. Test. Protect. Monitor. Local-first AI agent security engineering platform.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Explicit props type instead of Next.js's generated `LayoutProps<"/">`:
+// the generated helper only exists after `next typegen`/a build produces
+// `.next/types`, so a bare `tsc --noEmit` (as CI runs before any build) would
+// fail with TS2304. A plain `children` prop preserves identical runtime
+// behavior and does not depend on generated artifacts.
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"

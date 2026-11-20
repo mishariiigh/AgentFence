@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { api, type FindingDto } from "@/lib/api";
 import { useApiData } from "@/lib/useApiData";
@@ -43,7 +44,7 @@ function FindingCard({ finding }: { finding: FindingDto }) {
   );
 }
 
-export default function ScanDetailPage() {
+function ScanDetail() {
   const params = useParams<{ id: string }>();
   const scanId = params?.id;
   const detail = useApiData(() => api.getScan(scanId as string), [scanId]);
@@ -98,5 +99,13 @@ export default function ScanDetailPage() {
         </div>
       ) : null}
     </PageShell>
+  );
+}
+
+export default function ScanDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <ScanDetail />
+    </Suspense>
   );
 }

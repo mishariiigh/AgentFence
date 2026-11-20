@@ -32,8 +32,19 @@ export default function SettingsPage() {
             The dashboard consumes the local API started with{" "}
             <code className="rounded bg-muted px-1.5 py-0.5">agentfence dashboard</code> (default{" "}
             <code className="rounded bg-muted px-1.5 py-0.5">http://127.0.0.1:8000</code>). Configure the base URL via{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_AGENTFENCE_API</code> once API integration lands
-            in the dashboard.
+            <code className="rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_AGENTFENCE_API</code> and the local session
+            token via{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_AGENTFENCE_TOKEN</code>.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Mutating API calls (running scans, Arena runs, policy evaluation) require the
+            session token — it is generated automatically at
+            <code className="mx-1 rounded bg-muted px-1.5 py-0.5">.agentfence/.api-token</code>
+            with 0600 permissions and blocks untrusted websites from driving the local API.
+            To connect the dashboard, copy the token value into
+            <code className="mx-1 rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_AGENTFENCE_TOKEN</code>
+            in{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">apps/dashboard/.env.local</code>.
           </p>
         </Card>
       </div>
